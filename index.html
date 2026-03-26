@@ -1,0 +1,684 @@
+<!DOCTYPE html>
+
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Tempo — Feel the Time</title>
+<meta name="description" content="How well can you feel time? Hold a button for exactly the right duration.">
+<meta property="og:title" content="Tempo — Feel the Time">
+<meta property="og:description" content="A simple game about time perception. No tricks. Just feel it.">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg: #0a0a0a; --surface: #161616; --border: #2a2a2a;
+  --text: #efefef; --dim: #555; --accent: #c8ff00;
+}
+html, body { height: 100%; background: var(--bg); color: var(--text); font-family: 'Courier New', monospace; overflow-x: hidden; -webkit-tap-highlight-color: transparent; user-select: none; }
+#app { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 16px; }
+.screen { display: none; flex-direction: column; align-items: center; width: 100%; max-width: 340px; padding: 16px; }
+.screen.active { display: flex; }
+/* typography */
+.title { font-size: clamp(56px,18vw,80px); font-weight: bold; letter-spacing: -4px; line-height: 1; }
+.lbl { font-size: 11px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--dim); }
+/* grid */
+.level-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 7px; width: 100%; margin-bottom: 10px; }
+.lvl { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 11px 6px; cursor: pointer; text-align: center; transition: border-color .15s, background .15s; }
+.lvl.sel { background: rgba(200,255,0,0.07); }
+.lvl .t { font-size: 19px; font-weight: bold; display: block; }
+.lvl .d { font-size: 9px; letter-spacing: .1em; text-transform: uppercase; color: var(--dim); display: block; margin-top: 2px; }
+/* buttons */
+.btn { width: 100%; padding: 14px; border: none; border-radius: 7px; font-size: 13px; font-weight: bold; letter-spacing: .12em; text-transform: uppercase; cursor: pointer; font-family: 'Courier New', monospace; }
+.btn-p { background: var(--accent); color: #000; }
+.btn-p:active { opacity: .85; }
+.btn-g { background: transparent; color: #666; border: 1px solid var(--border); margin-top: 8px; }
+/* input */
+.inp { background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 10px 12px; color: var(--text); font-size: 13px; font-family: 'Courier New', monospace; outline: none; width: 100%; }
+.inp:focus { border-color: #444; }
+/* circle */
+.circle { width: 190px; height: 190px; border-radius: 50%; border: 2px solid var(--border); display: flex; align-items: center; justify-content: center; cursor: pointer; transition: border-color .1s, background .1s; touch-action: none; }
+.circle.on { background: rgba(200,255,0,0.05); }
+/* stat row */
+.srow { display: flex; justify-content: space-between; width: 100%; padding: 9px 0; border-top: 1px solid #1e1e1e; font-size: 12px; }
+.srow.last { border-bottom: 1px solid #1e1e1e; margin-bottom: 16px; }
+.srow .l { color: var(--dim); text-transform: uppercase; letter-spacing: .08em; }
+/* share btns */
+.share-row { display: flex; gap: 8px; width: 100%; margin-bottom: 10px; }
+.share-btn { flex: 1; padding: 11px 0; background: var(--surface); border: 1px solid var(--border); border-radius: 7px; font-size: 11px; letter-spacing: .08em; text-transform: uppercase; cursor: pointer; color: #888; font-family: 'Courier New', monospace; font-weight: bold; transition: color .15s; }
+.share-btn.copied { color: var(--accent); }
+/* board */
+.board-row { display: flex; align-items: center; gap: 8px; padding: 9px 0; border-bottom: 1px solid #1a1a1a; font-size: 12px; width: 100%; }
+/* mem ring */
+#mem-ring-wrap { position: relative; width: 70px; height: 70px; margin: 26px 0; }
+#mem-ring-label { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 14px; color: var(--dim); }
+/* mp */
+.mp-row { display: flex; align-items: center; gap: 8px; width: 100%; padding: 11px 0; border-bottom: 1px solid #1a1a1a; font-size: 13px; }
+</style>
+</head>
+<body>
+<div id="app">
+
+  <!-- HOME -->
+
+  <div class="screen active" id="s-home">
+    <div class="title">tem<span id="accent-title" style="color:#c8ff00">po</span></div>
+    <div class="lbl" style="margin-top:5px;margin-bottom:22px">feel the time</div>
+
+```
+<!-- Color picker -->
+<div id="color-picker" style="display:flex;gap:10px;margin-bottom:20px"></div>
+
+<!-- Levels -->
+<div class="level-grid" id="level-grid"></div>
+
+<!-- Custom -->
+<div style="display:flex;gap:8px;width:100%;margin-bottom:3px">
+  <input class="inp" id="custom-inp" type="number" placeholder="custom seconds (e.g. 4.5)" style="flex:1">
+  <button onclick="submitCustom()" style="padding:10px 14px;background:var(--accent);border:none;border-radius:6px;color:#000;font-weight:bold;cursor:pointer;font-size:13px;font-family:'Courier New',monospace">Set</button>
+</div>
+<div id="custom-err" style="font-size:11px;color:#ff6b35;min-height:16px;align-self:flex-start;margin-bottom:2px"></div>
+<div id="selected-lbl" style="font-size:12px;color:#c8ff00;font-weight:bold;margin-bottom:14px;align-self:flex-start">Selected: 3s</div>
+
+<button class="btn btn-p" onclick="startFree()">Play</button>
+<button class="btn btn-g" id="daily-btn" onclick="startDaily()" style="border-color:#333;color:#c8ff00">⚡ Daily — 3s</button>
+<button class="btn btn-g" onclick="openMPSetup()">👥 Multiplayer</button>
+<div style="display:flex;gap:8px;width:100%;margin-top:8px">
+  <button class="btn btn-g" style="margin-top:0;flex:1;font-size:10px" onclick="openBoard(false)">🏆 Global</button>
+  <button class="btn btn-g" style="margin-top:0;flex:1;font-size:10px" onclick="openBoard(true)">📅 Daily Board</button>
+</div>
+```
+
+  </div>
+
+  <!-- COUNTDOWN -->
+
+  <div class="screen" id="s-cd">
+    <div id="cd-num" style="font-size:110px;font-weight:bold;line-height:1;letter-spacing:-4px;color:#c8ff00">3</div>
+    <div class="lbl" id="cd-sub" style="margin-top:10px">get ready</div>
+  </div>
+
+  <!-- MEMORIZE -->
+
+  <div class="screen" id="s-mem">
+    <div class="lbl" id="mem-top" style="margin-bottom:16px">your target</div>
+    <div id="mem-num" style="font-size:84px;font-weight:bold;letter-spacing:-3px;line-height:1">3<span style="font-size:26px;color:#555;font-weight:normal">s</span></div>
+    <div id="mem-ring-wrap">
+      <svg style="transform:rotate(-90deg)" width="70" height="70" viewBox="0 0 70 70">
+        <circle cx="35" cy="35" r="30" fill="none" stroke="#2a2a2a" stroke-width="3"/>
+        <circle id="mem-ring" cx="35" cy="35" r="30" fill="none" stroke="#c8ff00" stroke-width="3"
+          stroke-linecap="round" stroke-dasharray="188" stroke-dashoffset="0"/>
+      </svg>
+      <div id="mem-ring-label">3</div>
+    </div>
+    <div class="lbl">memorizing…</div>
+  </div>
+
+  <!-- PLAY -->
+
+  <div class="screen" id="s-play">
+    <div class="lbl" id="play-top" style="margin-bottom:36px">hold for <span id="play-target" style="color:#efefef">3s</span> exactly</div>
+    <div class="circle" id="circle">
+      <div class="lbl" id="circle-lbl" style="pointer-events:none">hold</div>
+    </div>
+    <div class="lbl" style="margin-top:36px">press &amp; hold · release to stop</div>
+  </div>
+
+  <!-- RESULT -->
+
+  <div class="screen" id="s-result">
+    <div id="r-daily-lbl" class="lbl" style="margin-bottom:8px;display:none">⚡ Daily Challenge</div>
+    <div id="r-val" style="font-size:72px;font-weight:bold;letter-spacing:-3px;line-height:1;color:#c8ff00">—</div>
+    <div id="r-grade" style="font-size:13px;letter-spacing:.18em;text-transform:uppercase;color:#c8ff00;margin-top:5px;font-weight:bold">—</div>
+    <div id="r-sub" style="font-size:12px;color:#555;margin-bottom:18px;margin-top:3px">—</div>
+    <div class="srow"><span class="l">Target</span><span id="r-target">—</span></div>
+    <div class="srow"><span class="l">Your time</span><span id="r-actual">—</span></div>
+    <div class="srow"><span class="l">Error</span><span id="r-error">—</span></div>
+    <div class="srow last"><span class="l">Score</span><span id="r-score">—</span></div>
+    <!-- save -->
+    <div id="save-wrap" style="display:flex;gap:8px;width:100%;margin-bottom:12px">
+      <input class="inp" id="name-inp" type="text" placeholder="your name" maxlength="12" style="flex:1">
+      <button id="save-btn" onclick="saveScore()" style="padding:10px 14px;background:#2a2a2a;border:none;border-radius:6px;color:#000;font-weight:bold;cursor:pointer;font-size:13px;font-family:'Courier New',monospace">Save</button>
+    </div>
+    <div id="saved-lbl" style="font-size:11px;color:#c8ff00;margin-bottom:12px;letter-spacing:.1em;display:none">✓ Saved to global board</div>
+    <!-- share -->
+    <div class="share-row">
+      <button class="share-btn" id="share-btn" onclick="doShare()">📤 Share</button>
+      <button class="share-btn" id="challenge-btn" onclick="doChallenge()">⚔️ Challenge</button>
+    </div>
+    <button class="btn btn-p" id="retry-btn" onclick="retryGame()">Try Again</button>
+    <button class="btn btn-g" onclick="openBoardFromResult()">🏆 Highscores</button>
+    <button class="btn btn-g" onclick="showScreen('s-home')">Home</button>
+  </div>
+
+  <!-- BOARD -->
+
+  <div class="screen" id="s-board">
+    <div class="lbl" id="board-title" style="margin-bottom:4px">🏆 Global Highscores</div>
+    <div style="font-size:10px;color:#333;margin-bottom:18px;letter-spacing:.1em">live · supabase</div>
+    <div id="board-list" style="width:100%;margin-bottom:20px">
+      <div style="color:#444;font-size:13px;text-align:center;padding:24px 0">Loading…</div>
+    </div>
+    <button class="btn btn-p" onclick="boardBack()">Back</button>
+    <button class="btn btn-g" onclick="showScreen('s-home')">Home</button>
+  </div>
+
+  <!-- MP SETUP -->
+
+  <div class="screen" id="s-mp-setup">
+    <div style="font-size:44px;font-weight:bold;letter-spacing:-2px;line-height:1;margin-bottom:4px">
+      multi<span style="color:#c8ff00">player</span>
+    </div>
+    <div class="lbl" style="margin-bottom:22px">pass &amp; play · up to 4</div>
+    <div id="mp-player-list" style="width:100%"></div>
+    <button class="btn btn-g" id="mp-add-btn" onclick="addMPPlayer()" style="margin-top:4px;margin-bottom:12px">+ Add Player</button>
+    <div class="lbl" id="mp-target-lbl" style="margin:10px 0 6px;align-self:flex-start">Target: 3s</div>
+    <button class="btn btn-p" style="margin-top:8px" onclick="startMP()">Start</button>
+    <button class="btn btn-g" onclick="showScreen('s-home')">Cancel</button>
+  </div>
+
+  <!-- MP INTERIM -->
+
+  <div class="screen" id="s-mp-interim">
+    <div class="lbl" id="mp-int-name" style="margin-bottom:10px">—</div>
+    <div id="mp-int-val" style="font-size:64px;font-weight:bold;letter-spacing:-3px;color:#c8ff00">—<span style="font-size:22px;font-weight:normal;color:#555">ms</span></div>
+    <div id="mp-int-grade" style="font-size:13px;color:#c8ff00;letter-spacing:.15em;text-transform:uppercase;margin-top:4px;margin-bottom:32px">—</div>
+    <button class="btn btn-p" id="mp-int-btn" onclick="mpInterimNext()">Next</button>
+  </div>
+
+  <!-- MP FINAL -->
+
+  <div class="screen" id="s-mp-final">
+    <div class="lbl" id="mp-final-target" style="margin-bottom:18px">Results</div>
+    <div id="mp-final-list" style="width:100%;margin-bottom:16px"></div>
+    <div id="mp-winner" style="font-size:12px;color:#555;margin-bottom:20px;text-align:center">—</div>
+    <button class="btn btn-p" onclick="mpPlayAgain()">Play Again</button>
+    <button class="btn btn-g" onclick="showScreen('s-home')">Home</button>
+  </div>
+
+</div>
+
+<script>
+// ── CONFIG ──────────────────────────────────────────────────────────────────
+const SB_URL = "https://qnamjfqperwcctkuerss.supabase.co";
+const SB_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFuYW1qZnFwZXJ3Y2N0a3VlcnNzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ1NDE2MjIsImV4cCI6MjA5MDExNzYyMn0.wlFhPIkNRJweh1BL6R3a5rK7CiZ0NmC2fA5UvKRz_08";
+
+const PRESETS = [
+  {ms:1000,label:"1s",diff:"easy"},
+  {ms:3000,label:"3s",diff:"default"},
+  {ms:5000,label:"5s",diff:"medium"},
+  {ms:7000,label:"7s",diff:"hard"},
+  {ms:10000,label:"10s",diff:"expert"},
+  {ms:30000,label:"30s",diff:"zen"},
+];
+
+const COLORS = [
+  {id:"lime",   accent:"#c8ff00", bg:"rgba(200,255,0,0.07)"},
+  {id:"cyan",   accent:"#00d4ff", bg:"rgba(0,212,255,0.07)"},
+  {id:"coral",  accent:"#ff6b35", bg:"rgba(255,107,53,0.07)"},
+  {id:"violet", accent:"#bf5fff", bg:"rgba(191,95,255,0.07)"},
+];
+
+// ── STATE ────────────────────────────────────────────────────────────────────
+var targetMs = 3000;
+var colorId  = "lime";
+var holdStart= null;
+var raf      = null;
+var isDaily  = false;
+var gameMode = "free"; // free|daily|mp
+var lastResult = null;
+var boardIsDaily = false;
+
+var mpPlayers  = [{name:"",result:null},{name:"",result:null}];
+var mpCurrent  = 0;
+
+// ── UTILS ────────────────────────────────────────────────────────────────────
+function getColor() { return COLORS.find(c=>c.id===colorId); }
+function setAccent(a) {
+  document.querySelectorAll('.accent-el').forEach(el=>el.style.color=a);
+  document.getElementById('accent-title').style.color=a;
+  document.getElementById('mem-ring').style.stroke=a;
+}
+
+function fmt(ms) {
+  if (!ms) return "—";
+  if (ms<1000) return ms+"ms";
+  return ms%1000===0 ? ms/1000+"s" : (ms/1000).toFixed(1)+"s";
+}
+
+function getDailyMs() {
+  var d=new Date(), seed=d.getFullYear()*10000+(d.getMonth()+1)*100+d.getDate();
+  var opts=[1500,2000,2500,3000,3500,4000,5000,6000,7000,8000,10000];
+  return opts[seed%opts.length];
+}
+
+function getDailyKey() {
+  var d=new Date();
+  return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
+}
+
+function gradeIt(err,tgt) {
+  var p=Math.abs(err)/tgt;
+  if(p<=.03) return {l:"Godlike",      s:100};
+  if(p<=.06) return {l:"Dialed",       s:95};
+  if(p<=.10) return {l:"Sharp",        s:88};
+  if(p<=.15) return {l:"Close",        s:75};
+  if(p<=.25) return {l:"Off",          s:55};
+  if(p<=.40) return {l:"Way Off",      s:30};
+  return            {l:"Lost in Time", s:10};
+}
+
+function showScreen(id) {
+  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  window.scrollTo(0,0);
+}
+
+// ── SUPABASE ─────────────────────────────────────────────────────────────────
+async function dbInsert(row) {
+  try {
+    var r=await fetch(SB_URL+"/rest/v1/scores",{
+      method:"POST",
+      headers:{"Content-Type":"application/json","apikey":SB_KEY,"Authorization":"Bearer "+SB_KEY,"Prefer":"return=minimal"},
+      body:JSON.stringify(row)
+    });
+    return r.ok;
+  } catch(e){ return false; }
+}
+
+async function dbFetch(dailyKey) {
+  try {
+    var filter = dailyKey ? "&daily_key=eq."+dailyKey : "&daily_key=is.null";
+    var r=await fetch(SB_URL+"/rest/v1/scores?select=*&order=score.desc&limit=20"+filter,{
+      headers:{"apikey":SB_KEY,"Authorization":"Bearer "+SB_KEY}
+    });
+    if(!r.ok) return [];
+    return r.json();
+  } catch(e){ return []; }
+}
+
+// ── INIT ─────────────────────────────────────────────────────────────────────
+(function init(){
+  // Color picker
+  var cp=document.getElementById('color-picker');
+  COLORS.forEach(function(c){
+    var el=document.createElement('div');
+    el.style.cssText="width:28px;height:28px;border-radius:50%;background:"+c.accent+";cursor:pointer;transition:all .15s;border:3px solid transparent;";
+    if(c.id===colorId) { el.style.border="3px solid #fff"; el.style.opacity="1"; }
+    else el.style.opacity="0.35";
+    el.onclick=function(){ setColor(c.id); };
+    cp.appendChild(el);
+  });
+
+  // Level grid
+  var lg=document.getElementById('level-grid');
+  PRESETS.forEach(function(lv){
+    var el=document.createElement('div');
+    el.className='lvl'+(lv.ms===targetMs?' sel':'');
+    el.dataset.ms=lv.ms;
+    el.innerHTML='<span class="t" style="color:'+getColor().accent+'">'+lv.label+'</span><span class="d">'+lv.diff+'</span>';
+    el.onclick=function(){ selectLevel(lv.ms); };
+    lg.appendChild(el);
+  });
+
+  // Daily btn
+  document.getElementById('daily-btn').textContent='⚡ Daily — '+fmt(getDailyMs());
+
+  // Custom input enter
+  document.getElementById('custom-inp').addEventListener('keydown',function(e){ if(e.key==='Enter') submitCustom(); });
+
+  // Name input styling
+  var ni=document.getElementById('name-inp');
+  ni.addEventListener('input',function(){
+    document.getElementById('save-btn').style.background=ni.value.trim()?getColor().accent:'#2a2a2a';
+  });
+
+  // MP player inputs (initial)
+  renderMPPlayers();
+})();
+
+function setColor(id) {
+  colorId=id;
+  var c=getColor();
+  document.querySelectorAll('#color-picker div').forEach(function(el,i){
+    el.style.border=COLORS[i].id===id?'3px solid #fff':'3px solid transparent';
+    el.style.opacity=COLORS[i].id===id?'1':'0.35';
+  });
+  document.querySelectorAll('.lvl .t').forEach(function(el){ el.style.color=c.accent; });
+  document.getElementById('accent-title').style.color=c.accent;
+  document.getElementById('mem-ring').style.stroke=c.accent;
+  document.getElementById('selected-lbl').style.color=c.accent;
+  document.getElementById('daily-btn').style.color=c.accent;
+  document.getElementById('cd-num').style.color=c.accent;
+  document.getElementById('r-val').style.color=c.accent;
+  document.getElementById('r-grade').style.color=c.accent;
+  document.getElementById('r-daily-lbl').style.color=c.accent;
+  document.getElementById('save-btn').style.background=document.getElementById('name-inp').value.trim()?c.accent:'#2a2a2a';
+}
+
+function selectLevel(ms) {
+  targetMs=ms;
+  document.querySelectorAll('.lvl').forEach(function(el){
+    if(parseInt(el.dataset.ms)===ms) { el.classList.add('sel'); el.style.background=getColor().bg; el.style.borderColor=getColor().accent; }
+    else { el.classList.remove('sel'); el.style.background=''; el.style.borderColor=''; }
+  });
+  document.getElementById('selected-lbl').textContent='Selected: '+fmt(ms);
+  document.getElementById('mp-target-lbl').textContent='Target: '+fmt(ms);
+}
+
+function submitCustom() {
+  var val=document.getElementById('custom-inp').value;
+  var n=parseFloat(val);
+  if(isNaN(n)||n<=0){ document.getElementById('custom-err').textContent='Enter a number'; return; }
+  var ms=(val.includes('.')||n<=60)?Math.round(n*1000):Math.round(n);
+  if(ms<200||ms>120000){ document.getElementById('custom-err').textContent='0.2 – 120s'; return; }
+  document.getElementById('custom-err').textContent='';
+  document.getElementById('custom-inp').value='';
+  selectLevel(ms);
+}
+
+// ── COUNTDOWN ────────────────────────────────────────────────────────────────
+function countdown(n) {
+  showScreen('s-cd');
+  document.getElementById('cd-num').textContent=n;
+  if(n<=0){ memorize(); return; }
+  setTimeout(function(){ countdown(n-1); }, 700);
+}
+
+function memorize() {
+  showScreen('s-mem');
+  var c=getColor();
+  document.getElementById('mem-ring').style.stroke=c.accent;
+  document.getElementById('play-target').textContent=fmt(targetMs);
+  document.getElementById('play-target').style.color='#efefef';
+
+  // set target display
+  var s=targetMs/1000;
+  var num=targetMs<1000?targetMs:( s%1===0?s:s.toFixed(1) );
+  var unit=targetMs<1000?'ms':'s';
+  document.getElementById('mem-num').innerHTML=num+'<span style="font-size:26px;color:#555;font-weight:normal">'+unit+'</span>';
+
+  if(gameMode==='mp') {
+    document.getElementById('mem-top').textContent=mpPlayers[mpCurrent].name+' — target';
+    document.getElementById('cd-sub').textContent=mpPlayers[mpCurrent].name+' — get ready';
+    document.getElementById('play-top').innerHTML=
+      '<span style="color:'+c.accent+'">'+mpPlayers[mpCurrent].name+' · </span>hold for <span style="color:#efefef">'+fmt(targetMs)+'</span> exactly';
+  } else {
+    document.getElementById('mem-top').textContent='your target';
+    document.getElementById('cd-sub').textContent='get ready';
+    document.getElementById('play-top').innerHTML='hold for <span style="color:#efefef">'+fmt(targetMs)+'</span> exactly';
+  }
+
+  var CIRC=188, DUR=3000, t0=performance.now();
+  var ring=document.getElementById('mem-ring');
+  var lbl=document.getElementById('mem-ring-label');
+  function tick(){
+    var e=performance.now()-t0, rem=Math.max(0,DUR-e);
+    ring.style.strokeDashoffset=CIRC*(1-rem/DUR);
+    lbl.textContent=Math.ceil(rem/1000)||'';
+    if(e<DUR) raf=requestAnimationFrame(tick);
+    else startPlay();
+  }
+  raf=requestAnimationFrame(tick);
+}
+
+function startPlay() {
+  holdStart=null;
+  var circle=document.getElementById('circle');
+  circle.style.borderColor='#2a2a2a';
+  circle.style.background='transparent';
+  document.getElementById('circle-lbl').textContent='hold';
+  document.getElementById('circle-lbl').style.color='#555';
+  showScreen('s-play');
+}
+
+// ── HOLD ─────────────────────────────────────────────────────────────────────
+var circle=document.getElementById('circle');
+
+circle.addEventListener('mousedown', onDown);
+circle.addEventListener('touchstart', onDown, {passive:false});
+window.addEventListener('mouseup', onUp);
+window.addEventListener('touchend', onUp, {passive:false});
+
+function onDown(e) {
+  e.preventDefault();
+  if(holdStart!==null) return;
+  holdStart=performance.now();
+  var c=getColor();
+  circle.style.borderColor=c.accent;
+  circle.style.background=c.bg;
+  document.getElementById('circle-lbl').textContent='…';
+  document.getElementById('circle-lbl').style.color=c.accent;
+  function tick(){
+    if(holdStart===null) return;
+    if(performance.now()-holdStart>targetMs*5){ onUp(); return; }
+    raf=requestAnimationFrame(tick);
+  }
+  raf=requestAnimationFrame(tick);
+}
+
+function onUp(e) {
+  if(e) e.preventDefault();
+  if(holdStart===null) return;
+  var dur=performance.now()-holdStart;
+  holdStart=null;
+  cancelAnimationFrame(raf);
+  circle.style.borderColor='#2a2a2a';
+  circle.style.background='transparent';
+  document.getElementById('circle-lbl').textContent='hold';
+  document.getElementById('circle-lbl').style.color='#555';
+
+  var err=dur-targetMs, g=gradeIt(err,targetMs);
+  var r={actual:dur, err:err, abs:Math.abs(err), g:g, target:targetMs};
+  lastResult=r;
+
+  if(gameMode==='mp') {
+    mpPlayers[mpCurrent].result=r;
+    showMPInterim(r);
+  } else {
+    showResult(r);
+  }
+}
+
+// ── RESULT ───────────────────────────────────────────────────────────────────
+function showResult(r) {
+  var c=getColor();
+  // daily label
+  var dl=document.getElementById('r-daily-lbl');
+  if(isDaily){ dl.style.display='block'; dl.textContent='⚡ Daily — '+getDailyKey(); dl.style.color=c.accent; }
+  else dl.style.display='none';
+
+  var rv=document.getElementById('r-val');
+  rv.style.color=c.accent;
+  rv.innerHTML=(r.abs<1000?Math.round(r.abs):(r.abs/1000).toFixed(2))+'<span style="font-size:22px;font-weight:normal;color:#555">'+(r.abs<1000?'ms':'s')+'</span>';
+
+  var rg=document.getElementById('r-grade');
+  rg.style.color=c.accent; rg.textContent=r.g.l;
+  document.getElementById('r-sub').textContent=(r.abs/1000).toFixed(3)+'s '+(r.err>0?'too slow':'too fast');
+  document.getElementById('r-target').textContent=fmt(r.target);
+  document.getElementById('r-actual').textContent=(r.actual/1000).toFixed(3)+'s';
+  document.getElementById('r-error').textContent=(r.err>0?'+':'')+Math.round(r.err)+'ms';
+  document.getElementById('r-score').textContent=r.g.s+' / 100';
+
+  document.getElementById('save-wrap').style.display='flex';
+  document.getElementById('saved-lbl').style.display='none';
+  document.getElementById('name-inp').value='';
+  document.getElementById('save-btn').style.background='#2a2a2a';
+  document.getElementById('retry-btn').setAttribute('data-target', r.target);
+
+  showScreen('s-result');
+}
+
+async function saveScore() {
+  var name=document.getElementById('name-inp').value.trim();
+  if(!name||!lastResult) return;
+  document.getElementById('save-btn').textContent='…';
+  var row={name:name.slice(0,12), score:lastResult.g.s, grade:lastResult.g.l, target_ms:lastResult.target, actual_ms:Math.round(lastResult.actual), daily_key:isDaily?getDailyKey():null};
+  var ok=await dbInsert(row);
+  if(ok){
+    document.getElementById('save-wrap').style.display='none';
+    document.getElementById('saved-lbl').style.display='block';
+    document.getElementById('saved-lbl').style.color=getColor().accent;
+  } else {
+    document.getElementById('save-btn').textContent='Error';
+  }
+}
+
+function retryGame() {
+  var t=parseInt(document.getElementById('retry-btn').getAttribute('data-target'))||targetMs;
+  targetMs=t; countdown(3);
+}
+
+// ── SHARE ────────────────────────────────────────────────────────────────────
+function copyText(text, btnId) {
+  navigator.clipboard && navigator.clipboard.writeText(text).catch(function(){});
+  var btn=document.getElementById(btnId);
+  var orig=btn.textContent;
+  btn.textContent='✓ Copied!';
+  btn.classList.add('copied');
+  btn.style.color=getColor().accent;
+  setTimeout(function(){ btn.textContent=orig; btn.classList.remove('copied'); btn.style.color=''; }, 2000);
+}
+
+function doShare() {
+  if(!lastResult) return;
+  var r=lastResult;
+  var txt=(isDaily?'⏱ Tempo — Daily Challenge\nTarget: '+fmt(r.target):('⏱ Tempo\nTarget: '+fmt(r.target)))+
+    '\nMy time: '+(r.actual/1000).toFixed(3)+'s\nOff by '+Math.round(r.abs)+'ms — '+r.g.l+' ('+r.g.s+'/100)'+
+    '\n\nCan you beat me? → tempo.gg';
+  copyText(txt,'share-btn');
+}
+
+function doChallenge() {
+  if(!lastResult) return;
+  var r=lastResult;
+  var txt='⚔️ I challenge you on Tempo!\nBeat my '+fmt(r.target)+' run — I was off by '+Math.round(r.abs)+'ms ('+r.g.l+')\n→ tempo.gg/?c='+r.target;
+  copyText(txt,'challenge-btn');
+}
+
+// ── BOARD ────────────────────────────────────────────────────────────────────
+async function openBoard(daily) {
+  boardIsDaily=daily;
+  document.getElementById('board-title').textContent=daily?('📅 Daily — '+getDailyKey()):'🏆 Global Highscores';
+  document.getElementById('board-list').innerHTML='<div style="color:#444;font-size:13px;text-align:center;padding:24px 0">Loading…</div>';
+  showScreen('s-board');
+  var data=await dbFetch(daily?getDailyKey():null);
+  var list=document.getElementById('board-list');
+  if(!data||data.length===0){ list.innerHTML='<div style="color:#444;font-size:13px;text-align:center;padding:24px 0">No scores yet. Be first!</div>'; return; }
+  list.innerHTML='';
+  data.forEach(function(s,i){
+    var col=s.score>=88?'#c8ff00':s.score>=55?'#00d4ff':'#ff6b35';
+    var row=document.createElement('div');
+    row.className='board-row';
+    row.innerHTML='<div style="width:20px;color:#444;text-align:right;font-weight:bold">'+(i+1)+'</div>'+
+      '<div style="flex:1;font-weight:bold">'+s.name+'</div>'+
+      '<div style="color:#444;font-size:10px">'+fmt(s.target_ms)+'</div>'+
+      '<div style="color:'+col+';font-weight:bold;min-width:50px;text-align:right">'+s.score+'/100</div>'+
+      '<div style="color:#444;font-size:10px;min-width:70px;text-align:right">'+s.grade+'</div>';
+    list.appendChild(row);
+  });
+}
+
+function openBoardFromResult() { openBoard(isDaily); }
+function boardBack() { showScreen(lastResult?'s-result':'s-home'); }
+
+// ── GAME MODES ───────────────────────────────────────────────────────────────
+function startFree()  { gameMode='free';  isDaily=false; countdown(3); }
+function startDaily() { gameMode='daily'; isDaily=true;  targetMs=getDailyMs(); selectLevel(targetMs); countdown(3); }
+
+// ── MULTIPLAYER ───────────────────────────────────────────────────────────────
+function renderMPPlayers() {
+  var list=document.getElementById('mp-player-list');
+  list.innerHTML='';
+  mpPlayers.forEach(function(p,i){
+    var wrap=document.createElement('div');
+    wrap.style.cssText='display:flex;gap:8px;width:100%;margin-bottom:8px';
+    var inp=document.createElement('input');
+    inp.className='inp'; inp.placeholder='Player '+(i+1); inp.value=p.name;
+    inp.oninput=function(){ mpPlayers[i].name=inp.value; };
+    wrap.appendChild(inp);
+    if(mpPlayers.length>2){
+      var rm=document.createElement('button');
+      rm.textContent='✕';
+      rm.style.cssText='padding:10px 12px;background:transparent;border:1px solid #2a2a2a;border-radius:6px;color:#555;cursor:pointer';
+      rm.onclick=function(){ mpPlayers.splice(i,1); renderMPPlayers(); };
+      wrap.appendChild(rm);
+    }
+    list.appendChild(wrap);
+  });
+  document.getElementById('mp-add-btn').style.display=mpPlayers.length>=4?'none':'block';
+  document.getElementById('mp-target-lbl').textContent='Target: '+fmt(targetMs);
+}
+
+function openMPSetup() {
+  mpPlayers=[{name:'',result:null},{name:'',result:null}];
+  renderMPPlayers();
+  showScreen('s-mp-setup');
+}
+
+function addMPPlayer() {
+  if(mpPlayers.length>=4) return;
+  mpPlayers.push({name:'',result:null});
+  renderMPPlayers();
+}
+
+function startMP() {
+  var valid=mpPlayers.filter(function(p){ return p.name.trim(); });
+  if(valid.length<2) return;
+  mpPlayers=valid.map(function(p){ return {name:p.name.trim(),result:null}; });
+  gameMode='mp'; isDaily=false; mpCurrent=0;
+  countdown(3);
+}
+
+function showMPInterim(r) {
+  var c=getColor();
+  document.getElementById('mp-int-name').textContent=mpPlayers[mpCurrent].name;
+  document.getElementById('mp-int-val').innerHTML=Math.round(r.abs)+'<span style="font-size:22px;font-weight:normal;color:#555">ms</span>';
+  document.getElementById('mp-int-val').style.color=c.accent;
+  document.getElementById('mp-int-grade').textContent=r.g.l;
+  document.getElementById('mp-int-grade').style.color=c.accent;
+  var next=mpCurrent+1;
+  var allDone=next>=mpPlayers.length;
+  var btn=document.getElementById('mp-int-btn');
+  btn.style.background=c.accent;
+  if(allDone){ btn.textContent='See Results'; }
+  else { btn.textContent='Pass to '+mpPlayers[next].name+' →'; }
+  showScreen('s-mp-interim');
+}
+
+function mpInterimNext() {
+  var next=mpCurrent+1;
+  if(next>=mpPlayers.length){ showMPFinal(); return; }
+  mpCurrent=next;
+  countdown(3);
+}
+
+function showMPFinal() {
+  var c=getColor();
+  var sorted=[...mpPlayers].filter(function(p){ return p.result; }).sort(function(a,b){ return a.result.abs-b.result.abs; });
+  document.getElementById('mp-final-target').textContent='Results — '+fmt(targetMs);
+  var list=document.getElementById('mp-final-list');
+  list.innerHTML='';
+  var medals=['🥇','🥈','🥉','4️⃣'];
+  sorted.forEach(function(p,i){
+    var col=p.result.g.s>=88?'#c8ff00':p.result.g.s>=55?'#00d4ff':'#ff6b35';
+    var row=document.createElement('div');
+    row.className='mp-row';
+    row.innerHTML='<div style="font-size:18px;width:28px">'+medals[i]+'</div>'+
+      '<div style="flex:1;font-weight:bold;color:'+(i===0?c.accent:'#efefef')+'">'+p.name+'</div>'+
+      '<div style="color:#555;font-size:11px">'+(p.result.actual/1000).toFixed(3)+'s</div>'+
+      '<div style="color:'+col+';font-weight:bold">±'+Math.round(p.result.abs)+'ms</div>';
+    list.appendChild(row);
+  });
+  var winner=sorted[0];
+  document.getElementById('mp-winner').textContent='🏆 '+winner.name+' wins with ±'+Math.round(winner.result.abs)+'ms';
+  showScreen('s-mp-final');
+}
+
+function mpPlayAgain() {
+  mpPlayers=mpPlayers.map(function(p){ return {name:p.name,result:null}; });
+  mpCurrent=0; countdown(3);
+}
+</script>
+
+</body>
+</html>
